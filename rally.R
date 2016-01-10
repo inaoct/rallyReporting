@@ -16,7 +16,8 @@
 # userstories.csv is extracted from Rally's Plan -> User Stories. 
 # To get the appropriate data I created a custom view under Plan -> User Stories.
 # The view is called "User Stories with Features" and in addition to the defaul fields 
-# has the feature that a user story is associated with. 
+# has the feature that a user story is associated with. Also added is a count of the number of children so we 
+# can determine if a story is a parent story.
 # All user stories that fall under a SAFe release are listed out even if they do not have features.
 ###################################################################################################
 
@@ -25,11 +26,13 @@
 #  Must be run FIRST - at start of session. Otherwise it does not take.
 library(dplyr) # used for easier data frame manipulation
 library(splitstackshape) # used to split multiple values in a cell into separate rows
+library(xlsx)
+library(lubridate)
 
 
 ## Process milestones
 #  Milestone data needs to be stored in CSV file (excel file presents difficulties with dates)
-milestoneData <- read.table("./data/milestones.csv", sep = ",", header = TRUE, comment.char = "")
+milestoneData <- read.table("./data/milestones.csv", sep = ",", header = TRUE, comment.char = "", quote = "\"")
 milestoneData <- rename(milestoneData, MilestoneID = Formatted.ID, 
                         MilestoneName = Name, MilestoneColor = Display.Color)
 #extract milestones status from milestone Notes
@@ -40,6 +43,19 @@ milestoneData <- mutate(milestoneData, MilestoneDate = as.Date(as.character(Targ
                         MilestoneType = ifelse(is.na(MilestoneColor), "TBD",
                                                ifelse(MilestoneColor == "#ee6c19", "Client Deliverable", 
                                                       ifelse(MilestoneColor == "#df1a7b", "External Dependency", "NA"))))
+#  Add a dummy feature with an ID of MISSING and a name of Undefined
+dummyMilestoneRow <- data.frame( MilestoneID = "MI0", 
+                               MilestoneName = "Milestone Not Assigned", 
+                               MilestoneColor = "",
+                               Target.Date = ymd("2016-12-31"),
+                               Total.Artifact.Count = 0,
+                               Target.Project = "",
+                               Notes = "",
+                               MilestoneDate = ymd("2016-12-31"),
+                               MilestoneStatus = "",
+                               MilestoneType = ""
+                            )
+ammendedMilestoneData <- rbind(milestoneData, dummyMilestoneRow)
 
 ## Process features
 #  Note that using quote = "\"" is important here so that we could read in correctly any records that have commas in their values
@@ -50,8 +66,9 @@ featureData <- mutate(featureData,
                       BusinessArea = gsub(".*: ", "", BusinessArea),
                       FeatureState = ifelse(FeatureState == "", "Not Started",
                                                          ifelse(FeatureState == "Discovering" , "In Tech Discovery",
-                                                                ifelse(FeatureState == "Developing", "In Development", 
-                                                                       ifelse(FeatureState == "Done", "Complete", "NA" )))))
+                                                                ifelse(FeatureState == "Developing", "In Progress", 
+                                                                       ifelse(FeatureState == "Done", "Complete", "NA" )))),
+                      Milestones = ifelse(Milestones == "", "MI0: Fake", as.character(Milestones))) ## ensure that these rows are not dropped when splitting
 
 
 ## Process feature milestones - multiple milestones are stored in the same cell, separated by ";".
@@ -65,7 +82,7 @@ denormFeatureData <- mutate(denormFeatureData,
 
 ## Merge the feature and milestone data frames. We need to get all features independent of whether or not they have milestones.
 #  Merge by milestone ID
-mergedData <- merge(denormFeatureData, milestoneData, by.x = "MilestoneID", by.y = "MilestoneID", all.x = TRUE )
+mergedData <- merge(denormFeatureData, ammendedMilestoneData, by.x = "MilestoneID", by.y = "MilestoneID", all.x = TRUE )
 plotData <- select(mergedData, MilestoneID, MilestoneName, FeatureID, FeatureName, BusinessArea, MilestoneType, MilestoneDate, 
                    FeatureState, FeatureStatus, MilestoneStatus)
 
@@ -79,7 +96,11 @@ userStoryData <- rename(userStoryData, UserStoryID = Formatted.ID, UserStoryName
 #  Extract feature ID for subsequent merge. If a user story does not have a feature, set the ID to "MISSING".
 #  UNDEF would be used to merge with a dummy feature so that user stories with no features can be present in the visualization.
 userStoryData <- mutate(userStoryData, FeatureID = ifelse(Feature == "", "MISSING", gsub("^Feature ", "", gsub(":.*", "", Feature))),
-                        Iteration = ifelse(Iteration == "", "Iteration Missing", as.character(Iteration)))
+                        Iteration = ifelse(Iteration == "", "Iteration Missing", as.character(Iteration)),
+                        IsParentStory = ifelse(Direct.Children.Count > 0, TRUE, FALSE))
+
+# Remove stories that are parents. Those stories are not actionable by themselves and cannot be assigned a release. 
+userStoryData <- filter(userStoryData, IsParentStory == FALSE)
 
 ## Prep features for merging with user stories.
 #  Add a dummy feature with an ID of MISSING and a name of Undefined
