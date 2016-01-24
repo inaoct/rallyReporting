@@ -1,5 +1,5 @@
 ###################################  Script Purpose ############################################
-# Uses milestones.csv, features.csv, and userstories.csv to process data for Tableau vizualization.
+# Uses milestones.csv, features.csv, initiatives.csv, and userstories.csv to process data for Tableau vizualization.
 # In all cases the views are filtered by PSI Release prior to exporing to a csv file.
 #
 # milestones.csv is extarcted from Rally's Plan -> Timeboxes
@@ -9,9 +9,13 @@
 # No Status entry indicates that the milestone is on track.
 # Color is used to indicate the type of milestone: external dependency or DPIM deliverable.
 #
-# features.csv is extracted from Rally's Portfolio -> Portfolio Items
+# features.csv is extracted from Rally's Portfolio -> Portfolio Items (Features)
 # The default view was ammeded to include the following additional columns:
 # Milestones, Initiative, State, Tag. Tag is used to track feature status.
+#
+# initiatives.csv is extracted from Rally's Portfolio -> Portfolio Items (Initiatives)
+# The default view was ammeded in the same way as for features but the info is not relevant.
+#
 # 
 # userstories.csv is extracted from Rally's Plan -> User Stories. 
 # To get the appropriate data I created a custom view under Plan -> User Stories.
@@ -41,23 +45,53 @@ Sys.setlocale('LC_ALL', 'C') #handle warning messages input string 1 is invalid 
 milestoneData <- mutate(milestoneData, MilestoneDate = as.Date(as.character(Target.Date), "%m/%d/%y"),
                         MilestoneStatus = sapply(Notes, extractStatus),
                         MilestoneType = ifelse(is.na(MilestoneColor), "TBD",
-                                               ifelse(MilestoneColor == "#ee6c19", "Client Deliverable", 
+                                               ifelse(MilestoneColor == "#ee6c19", "DPIM Deliverable", 
                                                       ifelse(MilestoneColor == "#df1a7b", "External Dependency", "NA"))))
 #  Add a dummy feature with an ID of MISSING and a name of Undefined
 dummyMilestoneRow <- data.frame( MilestoneID = "MI0", 
                                MilestoneName = "Milestone Not Assigned", 
                                MilestoneColor = "",
-                               Target.Date = ymd("2016-12-31"),
+                               Target.Date = NA,
                                Total.Artifact.Count = 0,
                                Target.Project = "",
                                Notes = "",
-                               MilestoneDate = ymd("2016-12-31"),
+                               MilestoneDate = NA,
                                MilestoneStatus = "",
                                MilestoneType = ""
                             )
 ammendedMilestoneData <- rbind(milestoneData, dummyMilestoneRow)
 
-## Process features
+## Process INITIATIVES
+#  Note that using quote = "\"" is important here so that we could read in correctly any records that have commas in their values
+initiativeData <- read.table("./data/initiatives.csv", sep = ",", header = TRUE, comment.char = "", quote = "\"", fill = FALSE)
+initiativeData <- rename(initiativeData, InitiativeID = Formatted.ID, BusinessArea = Name)
+initiativeData <- mutate(initiativeData, Milestones = ifelse(Milestones == "", "MI0: Fake", 
+                                                                       as.character(Milestones))) ## ensure that these rows are not dropped when splitting
+
+## Process initiative milestones - multiple milestones are stored in the same cell, separated by ";".
+#  Need to extract each milestone into its own line
+denormInitiativeData <- cSplit(initiativeData, "Milestones", sep = ";", direction = "long")
+#  Extract milestone IDs
+firstElement <- function(x){x[1]}
+milestoneIDs <- strsplit(as.character(denormInitiativeData$Milestones), ":")
+denormInitiativeData <- mutate(denormInitiativeData, 
+                               MilestoneID = sapply(milestoneIDs, firstElement))
+
+## Merge the feature and milestone data frames. We need to get all features independent of whether or not they have milestones.
+#  Merge by milestone ID
+mergedInitiativeData <- merge(denormInitiativeData, ammendedMilestoneData, by.x = "MilestoneID", by.y = "MilestoneID", all.x = TRUE )
+# Drop rows with dummy milestones
+mergedInitiativeData <- filter(mergedInitiativeData, MilestoneID != "MI0")
+plotInitiativeData <- select(mergedInitiativeData, MilestoneID, MilestoneName, InitiativeID, BusinessArea, 
+                             MilestoneType, MilestoneDate, MilestoneStatus, Notes)
+
+## Write the resulting data to an excel file. 
+#  This will be used for visualization in Tableau.
+write.xlsx(plotInitiativeData, file = "./data/initiatives_and_milestones.xlsx", row.names = FALSE, showNA = FALSE)
+
+
+
+## Process FEATURES
 #  Note that using quote = "\"" is important here so that we could read in correctly any records that have commas in their values
 featureData <- read.table("./data/features.csv", sep = ",", header = TRUE, comment.char = "", quote = "\"", fill = FALSE)
 featureData <- rename(featureData, FeatureID = Formatted.ID, FeatureName = Name, BusinessArea = Parent, 
@@ -82,13 +116,16 @@ denormFeatureData <- mutate(denormFeatureData,
 
 ## Merge the feature and milestone data frames. We need to get all features independent of whether or not they have milestones.
 #  Merge by milestone ID
-mergedData <- merge(denormFeatureData, ammendedMilestoneData, by.x = "MilestoneID", by.y = "MilestoneID", all.x = TRUE )
-plotData <- select(mergedData, MilestoneID, MilestoneName, FeatureID, FeatureName, BusinessArea, MilestoneType, MilestoneDate, 
-                   FeatureState, FeatureStatus, MilestoneStatus)
+mergedFeatureData <- merge(denormFeatureData, ammendedMilestoneData, by.x = "MilestoneID", by.y = "MilestoneID", all.x = TRUE )
+
+# Drop rows with dummy milestones
+mergedFeatureData <- filter(mergedFeatureData, MilestoneID != "MI0")
+plotFeatureData <- select(mergedFeatureData, MilestoneID, MilestoneName, FeatureID, FeatureName, BusinessArea, MilestoneType, MilestoneDate, 
+                   FeatureState, FeatureStatus, MilestoneStatus, Notes)
 
 ## Write the resulting data to an excel file. 
 #  This will be used for visualization in Tableau.
-write.xlsx(plotData, file = "./data/features_and_milestones.xlsx", row.names = FALSE, showNA = FALSE)
+write.xlsx(plotFeatureData, file = "./data/features_and_milestones.xlsx", row.names = FALSE, showNA = FALSE)
 
 ## Process user stories
 userStoryData <- read.table("./data/userstories.csv", sep = ",", header = TRUE, comment.char = "", quote = "\"", fill = FALSE)
