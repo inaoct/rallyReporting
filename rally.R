@@ -85,6 +85,15 @@ mergedInitiativeData <- filter(mergedInitiativeData, MilestoneID != "MI0")
 plotInitiativeData <- select(mergedInitiativeData, MilestoneID, MilestoneName, InitiativeID, BusinessArea, 
                              MilestoneType, MilestoneDate, MilestoneStatus, Notes)
 
+# Fill in dates with no entry so that the Tableau Calendar includes all dates.
+fillerDates <- seq(as.Date("2015/12/1"), as.Date("2016/4/30"), by = "day")
+milestoneDates <- unique(plotInitiativeData$MilestoneDate)
+#get all dates that do not have any milestones 
+missingDates <- as.Date(setdiff(fillerDates, milestoneDates), origin = "1970-1-1")
+fillRecords <- data.frame(MilestoneID = "", MilestoneName = "", InitiativeID = "", BusinessArea = "", 
+                          MilestoneType = "",  MilestoneDate = missingDates, MilestoneStatus = "", Notes = "")
+plotInitiativeData <- rbind(plotInitiativeData, fillRecords)
+
 ## Write the resulting data to an excel file. 
 #  This will be used for visualization in Tableau.
 write.xlsx(plotInitiativeData, file = "./data/initiatives_and_milestones.xlsx", row.names = FALSE, showNA = FALSE)
