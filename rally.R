@@ -4,8 +4,8 @@
 #
 # milestones.csv is extarcted from Rally's Plan -> Timeboxes
 # The default view was ammended to incluse Notes in addition to the out-of-the box fields.
-# Since there is no separate field to indicate milestone status, a status section was added 
-# within the NOtes field. It has the following format: Status: [status value]. 
+# Since there is no separate field to indicate milestone status, a status section was added
+# within the Notes field. It has the following format: Status: [status value].
 # No Status entry indicates that the milestone is on track.
 # Color is used to indicate the type of milestone: external dependency or DPIM deliverable.
 #
@@ -16,168 +16,430 @@
 # initiatives.csv is extracted from Rally's Portfolio -> Portfolio Items (Initiatives)
 # The default view was ammeded in the same way as for features but the info is not relevant.
 #
-# 
-# userstories.csv is extracted from Rally's Plan -> User Stories. 
+# userstories.csv is extracted from Rally's Plan -> User Stories.
 # To get the appropriate data I created a custom view under Plan -> User Stories.
-# The view is called "User Stories with Features" and in addition to the defaul fields 
-# has the feature that a user story is associated with. Also added is a count of the number of children so we 
+# The view is called "User Stories with Features" and in addition to the default fields
+# has the feature that a user story is associated with. Also added is a count of the number of children so we
 # can determine if a story is a parent story.
 # All user stories that fall under a SAFe release are listed out even if they do not have features.
+#
+# Instructions for correctly populating the necessary data files can be found in the following doc:
+# https://docs.google.com/document/d/1oAAEczpufGGxhYO_9ElY5II2Tvn4JC_6kYEAPjgEO84/edit
 ###################################################################################################
 
-## WHEN RUNNING FROM WORK with proxy 
-#  Make sure to run Sys.setenv(http_proxy= "http://proxy.inbcu.com/:8080") 
+## IMPORTANT!!! WHEN RUNNING FROM WORK with proxy
+#  Make sure to run Sys.setenv(http_proxy= "http://proxy.inbcu.com/:8080")
 #  Must be run FIRST - at start of session. Otherwise it does not take.
-library(dplyr) # used for easier data frame manipulation
-library(splitstackshape) # used to split multiple values in a cell into separate rows
-library(xlsx)
+
+## Handle library pre-requisites
+# Using dplyr for its more intuitive data frame processing
+if (!require(dplyr))
+  install.packages("dplyr")
+library(dplyr)
+# Using lubridate for easier date manipulation
+if (!require(lubridate))
+  install.packages("lubridate")
 library(lubridate)
+# Using splitstackshape to split multiple values in a cell into separate rows
+if (!require(splitstackshape))
+  install.packages("splitstackshape")
+library(splitstackshape)
+# Using xlsx for saving results to excel
+if (!require(xlsx))
+  install.packages("xlsx")
+library(xlsx)
+
+#it would be better to have this stored in a csv file and retrieved in "one go"
+getProjectFileData <- function() {
+  projectFiles <- data.frame(
+    RallyProject = "MVPDAdmin",
+    featuresURL = "https://www.dropbox.com/s/77kd42o8xpojc0u/featuresAdmin.csv?dl=0",
+    initiativesURL = "https://www.dropbox.com/s/e8rujax8a6joduy/initiativesAdmin.csv?dl=0",
+    milestonesURL = "https://www.dropbox.com/s/7fhefjrw7a5zrlc/milestonesAdmin.csv?dl=0",
+    userstoriesURL = "https://www.dropbox.com/s/ygdtapx69k0hawn/userstoriesAdmin.csv?dl=0",
+    stringsAsFactors = FALSE
+  )
+  
+  projectFiles <- rbind(
+    projectFiles,
+    c(
+      "TVEArt",
+      "https://www.dropbox.com/s/3ory9hvttohv41m/features.csv?dl=0",
+      "https://www.dropbox.com/s/ww33molajukswsq/initiatives.csv?dl=0",
+      "https://www.dropbox.com/s/qc2bzj9gh96xsvu/milestones.csv?dl=0",
+      "https://www.dropbox.com/s/r46ep9s19po317b/userstories.csv?dl=0"
+    )
+  )
+  projectFiles
+}
 
 
-## Process milestones
-#  Milestone data needs to be stored in CSV file (excel file presents difficulties with dates)
-milestoneData <- read.table("./data/milestones.csv", sep = ",", header = TRUE, comment.char = "", quote = "\"")
-milestoneData <- rename(milestoneData, MilestoneID = Formatted.ID, 
-                        MilestoneName = Name, MilestoneColor = Display.Color)
-#extract milestones status from milestone Notes
-extractStatus <- function(x) {ifelse(grepl("Status", x),  sub("\\].*", "", sub(".*\\[", "", x)), "On Track")}
-Sys.setlocale('LC_ALL', 'C') #handle warning messages input string 1 is invalid in this locale
-milestoneData <- mutate(milestoneData, MilestoneDate = as.Date(as.character(Target.Date), "%m/%d/%y"),
-                        MilestoneStatus = sapply(Notes, extractStatus),
-                        MilestoneType = ifelse(is.na(MilestoneColor), "TBD",
-                                               ifelse(MilestoneColor == "#ee6c19", "DPIM Deliverable", 
-                                                      ifelse(MilestoneColor == "#df1a7b", "External Dependency", "NA"))))
-#  Add a dummy feature with an ID of MISSING and a name of Undefined
-dummyMilestoneRow <- data.frame( MilestoneID = "MI0", 
-                               MilestoneName = "Milestone Not Assigned", 
-                               MilestoneColor = "",
-                               Target.Date = NA,
-                               Total.Artifact.Count = 0,
-                               Target.Project = "",
-                               Notes = "",
-                               MilestoneDate = NA,
-                               MilestoneStatus = "",
-                               MilestoneType = ""
-                            )
-ammendedMilestoneData <- rbind(milestoneData, dummyMilestoneRow)
-
-## Process INITIATIVES
-#  Note that using quote = "\"" is important here so that we could read in correctly any records that have commas in their values
-initiativeData <- read.table("./data/initiatives.csv", sep = ",", header = TRUE, comment.char = "", quote = "\"", fill = FALSE)
-initiativeData <- rename(initiativeData, InitiativeID = Formatted.ID, BusinessArea = Name)
-initiativeData <- mutate(initiativeData, Milestones = ifelse(Milestones == "", "MI0: Fake", 
-                                                                       as.character(Milestones))) ## ensure that these rows are not dropped when splitting
-
-## Process initiative milestones - multiple milestones are stored in the same cell, separated by ";".
-#  Need to extract each milestone into its own line
-denormInitiativeData <- cSplit(initiativeData, "Milestones", sep = ";", direction = "long")
-#  Extract milestone IDs
-firstElement <- function(x){x[1]}
-milestoneIDs <- strsplit(as.character(denormInitiativeData$Milestones), ":")
-denormInitiativeData <- mutate(denormInitiativeData, 
-                               MilestoneID = sapply(milestoneIDs, firstElement))
-
-## Merge the feature and milestone data frames. We need to get all features independent of whether or not they have milestones.
-#  Merge by milestone ID
-mergedInitiativeData <- merge(denormInitiativeData, ammendedMilestoneData, by.x = "MilestoneID", by.y = "MilestoneID", all.x = TRUE )
-# Drop rows with dummy milestones
-mergedInitiativeData <- filter(mergedInitiativeData, MilestoneID != "MI0")
-plotInitiativeData <- select(mergedInitiativeData, MilestoneID, MilestoneName, InitiativeID, BusinessArea, 
-                             MilestoneType, MilestoneDate, MilestoneStatus, Notes)
-
-# Fill in dates with no entry so that the Tableau Calendar includes all dates.
-fillerDates <- seq(as.Date("2015/12/1"), as.Date("2016/4/30"), by = "day")
-milestoneDates <- unique(plotInitiativeData$MilestoneDate)
-#get all dates that do not have any milestones 
-missingDates <- as.Date(setdiff(fillerDates, milestoneDates), origin = "1970-1-1")
-fillRecords <- data.frame(MilestoneID = "", MilestoneName = "", InitiativeID = "", BusinessArea = "", 
-                          MilestoneType = "",  MilestoneDate = missingDates, MilestoneStatus = "", Notes = "")
-plotInitiativeData <- rbind(plotInitiativeData, fillRecords)
-
-## Write the resulting data to an excel file. 
-#  This will be used for visualization in Tableau.
-write.xlsx(plotInitiativeData, file = "./data/initiatives_and_milestones.xlsx", row.names = FALSE, showNA = FALSE)
+#retrieves the data for all projects and combines them by milestones, features, initiatives, and user stories
+retrieveProjectData <- function(projectFiles) {
+  featureData <- data.frame()
+  initiativeData <- data.frame()
+  milestoneData <- data.frame()
+  userstoryData <- data.frame()
+  
+  for (i in 1:nrow(projectFiles))
+  {
+    featuresFile <-
+      paste("./data/features", projectFiles$RallyProject[i], ".csv", sep = "")
+    download.file(
+      projectFiles$featuresURL[i],
+      destfile = featuresFile ,
+      method = "curl", quiet = TRUE
+    )
+    featureData <- rbind(featureData, processFeatures(featuresFile))
+    
+    initiativesFile <-
+      paste("./data/initiatives", projectFiles$RallyProject[i], ".csv", sep = "")
+    download.file(
+      projectFiles$initiativesURL[i],
+      destfile = initiativesFile,
+      method = "curl", quiet = TRUE
+    )
+    initiativeData <-
+      rbind(initiativeData, processInitiatives(initiativesFile))
+    
+    milestonesFile <-
+      paste("./data/milestones", projectFiles$RallyProject[i], ".csv", sep = "")
+    download.file(
+      projectFiles$milestonesURL[i],
+      destfile = milestonesFile,
+      method = "curl", quiet = TRUE
+    )
+    milestoneData <-
+      rbind(milestoneData, processMilestones(milestonesFile))
+    
+    userstoriesFile <-
+      paste("./data/userstories", projectFiles$RallyProject[i], ".csv", sep = "")
+    download.file(
+      projectFiles$userstoriesURL[i],
+      destfile = userstoriesFile,
+      method = "curl", quiet = TRUE
+    )
+    userstoryData <-
+      rbind(userstoryData, processUserstories(userstoriesFile))
+  }
+  list(
+    "milestones" = milestoneData, "initiatives" = initiativeData,
+    "features" = featureData, "userstories" = userstoryData
+  )
+}
 
 
-
-## Process FEATURES
-#  Note that using quote = "\"" is important here so that we could read in correctly any records that have commas in their values
-featureData <- read.table("./data/features.csv", sep = ",", header = TRUE, comment.char = "", quote = "\"", fill = FALSE)
-featureData <- rename(featureData, FeatureID = Formatted.ID, FeatureName = Name, BusinessArea = Parent, 
-                      FeatureState = State, FeatureStatus = Tags)
-featureData <- mutate(featureData, 
-                      BusinessArea = gsub(".*: ", "", BusinessArea),
-                      FeatureState = ifelse(FeatureState == "", "Not Started",
-                                                         ifelse(FeatureState == "Discovering" , "In Tech Discovery",
-                                                                ifelse(FeatureState == "Developing", "In Progress", 
-                                                                       ifelse(FeatureState == "Done", "Complete", "NA" )))),
-                      Milestones = ifelse(Milestones == "", "MI0: Fake", as.character(Milestones))) ## ensure that these rows are not dropped when splitting
+processProjects <- function() {
+  combinedList <- retrieveProjectData(getProjectFileData())
+  mergedData <- mergeData(combinedList)
+  saveData(
+    mergedData$featuresAndMilestones,
+    mergedData$initiativesAndMilestones,
+    mergedData$featuresAndUserstories
+  )
+}
 
 
-## Process feature milestones - multiple milestones are stored in the same cell, separated by ";".
-#  Need to extract each milestone into its own line
-denormFeatureData <- cSplit(featureData, "Milestones", sep = ";", direction = "long")
-#  Extract milestone IDs
-firstElement <- function(x){x[1]}
-milestoneIDs <- strsplit(as.character(denormFeatureData$Milestones), ":")
-denormFeatureData <- mutate(denormFeatureData, 
-                            MilestoneID = sapply(milestoneIDs, firstElement))
+mergeData <- function(combinedProjectData) {
+  denormFeatureData <-
+    denormalizeFeatures(combinedProjectData$features)
+  ammendedMilestoneData <-
+    ammendMilestones(combinedProjectData$milestones)
+  denormInitiativeData <-
+    denormalizeInitiatives(combinedProjectData$initiatives)
+  
+  mergedFeaturesAndMilestones <-
+    mergeFeaturesAndMilestones(denormFeatureData, ammendedMilestoneData)
+  mergedInitiativesAndMilestones <-
+    mergeInitiativesAndMilestones(denormInitiativeData, ammendedMilestoneData)
+  mergedFeaturesAndUserstories <-
+    mergeFeaturesAndUserstories(combinedProjectData$userstories,
+                                combinedProjectData$features)
+  list(
+    "featuresAndMilestones" = mergedFeaturesAndMilestones,
+    "initiativesAndMilestones" = mergedInitiativesAndMilestones,
+    "featuresAndUserstories" = mergedFeaturesAndUserstories
+  )
+}
 
-## Merge the feature and milestone data frames. We need to get all features independent of whether or not they have milestones.
-#  Merge by milestone ID
-mergedFeatureData <- merge(denormFeatureData, ammendedMilestoneData, by.x = "MilestoneID", by.y = "MilestoneID", all.x = TRUE )
+processMilestones <- function(milestonesFile) {
+  ## Process milestones
+  #  Milestone data needs to be stored in CSV file (excel file presents difficulties with dates)
+  milestoneData <-
+    read.table(
+      milestonesFile, sep = ",", header = TRUE, comment.char = "", quote = "\""
+    )
+  milestoneData <-
+    rename(
+      milestoneData, MilestoneID = Formatted.ID,
+      MilestoneName = Name, MilestoneColor = Display.Color
+    )
+  #extract milestones status from milestone Notes
+  extractStatus <-
+    function(x) {
+      ifelse(grepl("Status", x),  sub("\\].*", "", sub(".*\\[", "", x)), "On Track")
+    }
+  Sys.setlocale('LC_ALL', 'C') #handle warning messages input string 1 is invalid in this locale
+  
+  milestoneData <-
+    mutate(
+      milestoneData, MilestoneDate = as.Date(mdy(as.character(Target.Date))),
+      MilestoneStatus = sapply(Notes, extractStatus),
+      MilestoneType = ifelse(
+        is.na(MilestoneColor), "TBD",
+        ifelse(
+          MilestoneColor == "#ee6c19", "DPIM Deliverable",
+          ifelse(MilestoneColor == "#df1a7b", "External Dependency", "NA")
+        )
+      )
+    )
+  milestoneData
+}
 
-# Drop rows with dummy milestones
-mergedFeatureData <- filter(mergedFeatureData, MilestoneID != "MI0")
-plotFeatureData <- select(mergedFeatureData, MilestoneID, MilestoneName, FeatureID, FeatureName, BusinessArea, MilestoneType, MilestoneDate, 
-                   FeatureState, FeatureStatus, MilestoneStatus, Notes)
+# Add a dummy milestone with an ID of MISSING and a name of Undefined
+# This is necessary to ensure we dpo not miss features or initiatives when merging milestones with portfolio items
+ammendMilestones <- function(milestoneData) {
+  dummyMilestoneRow <- data.frame(
+    MilestoneID = "MI0",
+    MilestoneName = "Milestone Not Assigned",
+    MilestoneColor = "",
+    Target.Date = NA,
+    Total.Artifact.Count = 0,
+    Target.Project = "",
+    Notes = "",
+    MilestoneDate = NA,
+    MilestoneStatus = "",
+    MilestoneType = ""
+  )
+  ammendedMilestoneData <- rbind(milestoneData, dummyMilestoneRow)
+  ammendedMilestoneData
+}
 
-## Write the resulting data to an excel file. 
-#  This will be used for visualization in Tableau.
-write.xlsx(plotFeatureData, file = "./data/features_and_milestones.xlsx", row.names = FALSE, showNA = FALSE)
+processInitiatives <- function(initiativesFile) {
+  ## Process INITIATIVES
+  #  Note that using quote = "\"" is important here so that we could read in correctly any records that have commas in their values
+  initiativeData <-
+    read.table(
+      initiativesFile, sep = ",", header = TRUE, comment.char = "", quote = "\"", fill = FALSE
+    )
+  initiativeData <-
+    rename(initiativeData, InitiativeID = Formatted.ID, BusinessArea = Name)
+  initiativeData <-
+    mutate(initiativeData, Milestones = ifelse(Milestones == "", "MI0: Fake",
+                                               as.character(Milestones))) ## ensure that these rows are not dropped when splitting
+  initiativeData
+}
 
-## Process user stories
-userStoryData <- read.table("./data/userstories.csv", sep = ",", header = TRUE, comment.char = "", quote = "\"", fill = FALSE)
-userStoryData <- rename(userStoryData, UserStoryID = Formatted.ID, UserStoryName = Name, Team = Project)
-#  Extract feature ID for subsequent merge. If a user story does not have a feature, set the ID to "MISSING".
-#  UNDEF would be used to merge with a dummy feature so that user stories with no features can be present in the visualization.
-userStoryData <- mutate(userStoryData, FeatureID = ifelse(Feature == "", "MISSING", gsub("^Feature ", "", gsub(":.*", "", Feature))),
-                        Iteration = ifelse(Iteration == "", "Iteration Missing", as.character(Iteration)),
-                        IsParentStory = ifelse(Direct.Children.Count > 0, TRUE, FALSE))
+denormalizeInitiatives <- function(initiativeData) {
+  ## Process initiative milestones - multiple milestones are stored in the same cell, separated by ";".
+  #  Need to extract each milestone into its own line
+  denormInitiativeData <-
+    cSplit(initiativeData, "Milestones", sep = ";", direction = "long")
+  #  Extract milestone IDs
+  firstElement <- function(x) {
+    x[1]
+  }
+  milestoneIDs <-
+    strsplit(as.character(denormInitiativeData$Milestones), ":")
+  denormInitiativeData <- mutate(denormInitiativeData,
+                                 MilestoneID = sapply(milestoneIDs, firstElement))
+  denormInitiativeData
+}
 
-# Remove stories that are parents. Those stories are not actionable by themselves and cannot be assigned a release. 
-userStoryData <- filter(userStoryData, IsParentStory == FALSE)
+processFeatures <- function(featuresFile) {
+  ## Process FEATURES
+  #  Note that using quote = "\"" is important here so that we could read in correctly any records that have commas in their values
+  featureData <-
+    read.table(
+      featuresFile, sep = ",", header = TRUE, comment.char = "", quote = "\"", fill = FALSE
+    )
+  featureData <-
+    rename(
+      featureData, FeatureID = Formatted.ID, FeatureName = Name, BusinessArea = Parent,
+      FeatureState = State, FeatureStatus = Tags
+    )
+  featureData <- mutate(
+    featureData,
+    BusinessArea = gsub(".*: ", "", BusinessArea),
+    FeatureState = ifelse(
+      FeatureState == "", "Not Started",
+      ifelse(
+        FeatureState == "Discovering" , "In Tech Discovery",
+        ifelse(
+          FeatureState == "Developing", "In Progress",
+          ifelse(FeatureState == "Done", "Complete", "NA")
+        )
+      )
+    ),
+    Milestones = ifelse(Milestones == "", "MI0: Fake", as.character(Milestones))
+  ) ## ensure that these rows are not dropped when splitting
+  
+  featureData
+  
+}
 
-## Prep features for merging with user stories.
-#  Add a dummy feature with an ID of MISSING and a name of Undefined
-dummyFeatureRow <- data.frame( FeatureID = "MISSING", 
-                               FeatureName = "Feature Not Assigned", 
-                               Release = "",
-                               Percent.Done.By.Story.Plan.Estimate = 0,
-                               Percent.Done.By.Story.Count = 0,
-                               Project = "1", 
-                               Milestones = "Undefined Milestone", 
-                               BusinessArea = "Undefined Business Area", 
-                               FeatureState = "TBD",
-                               FeatureStatus = "TBD")
-ammendedFeatureData <- rbind(featureData, dummyFeatureRow)
+denormalizeFeatures <- function(featureData) {
+  ## Process feature milestones - multiple milestones are stored in the same cell, separated by ";".
+  #  Need to extract each milestone into its own line
+  denormFeatureData <-
+    cSplit(featureData, "Milestones", sep = ";", direction = "long")
+  #  Extract milestone IDs
+  firstElement <- function(x) {
+    x[1]
+  }
+  milestoneIDs <-
+    strsplit(as.character(denormFeatureData$Milestones), ":")
+  denormFeatureData <- mutate(denormFeatureData,
+                              MilestoneID = sapply(milestoneIDs, firstElement))
+  denormFeatureData
+}
 
-## Merge the feature and user story data frames. We need to get all user stories independent on whether or not they have features
-#  Also want to get features that do not have user stories
-#  Merge by feature ID
-mergedStoryData <- merge(userStoryData, ammendedFeatureData, by.x = "FeatureID", by.y = "FeatureID", all.x = TRUE, all.y = TRUE )
-storyPlotData <- select(mergedStoryData, BusinessArea, FeatureID, FeatureName, 
-                   UserStoryID, UserStoryName, Iteration, Team, FeatureState, FeatureStatus)
+processUserstories <- function(userstoriesFile) {
+  ## Process user stories
+  userStoryData <-
+    read.table(
+      userstoriesFile, sep = ",", header = TRUE, comment.char = "", quote = "\"", fill = FALSE
+    )
+  userStoryData <-
+    rename(
+      userStoryData, UserStoryID = Formatted.ID, UserStoryName = Name, Team = Project
+    )
+  #  Extract feature ID for subsequent merge. If a user story does not have a feature, set the ID to "MISSING".
+  #  UNDEF would be used to merge with a dummy feature so that user stories with no features can be present in the visualization.
+  userStoryData <-
+    mutate(
+      userStoryData, FeatureID = ifelse(Feature == "", "MISSING", gsub("^Feature ", "", gsub(":.*", "", Feature))),
+      Iteration = ifelse(Iteration == "", "Iteration Missing", as.character(Iteration)),
+      IsParentStory = ifelse(Direct.Children.Count > 0, TRUE, FALSE)
+    )
+  
+  # Remove stories that are parents. Those stories are not actionable by themselves and cannot be assigned a release.
+  userStoryData <- filter(userStoryData, IsParentStory == FALSE)
+  userStoryData
+}
 
-# After the merge any features that have not been assigned stories will have null values in the respective fields. 
-# Amend that by explicitly stating that there are no stories assigned and no iterations
-# Need to account for 1) no story, 2) no iteration, and 3) no team
-storyPlotData <- mutate(storyPlotData, UserStoryID = ifelse(is.na(UserStoryID), "MISSING", as.character(UserStoryID)), 
-                        UserStoryName= ifelse(is.na(UserStoryName), "No User Story", as.character(UserStoryName)),
-                        Iteration = ifelse(is.na(Iteration), "No Iteration", as.character(Iteration)), 
-                        Team = ifelse(is.na(Team), "No Team", as.character(Team)))
+mergeFeaturesAndMilestones <-
+  function(denormFeatureData, ammendedMilestoneData) {
+    ## Merge the feature and milestone data frames. We need to get all features independent of whether or not they have milestones.
+    #  Merge by milestone ID
+    mergedFeatureData <-
+      merge(
+        denormFeatureData, ammendedMilestoneData, by.x = "MilestoneID", by.y = "MilestoneID", all.x = TRUE
+      )
+    
+    # Drop rows with dummy milestones
+    mergedFeatureData <-
+      filter(mergedFeatureData, MilestoneID != "MI0")
+    plotFeatureData <-
+      select(
+        mergedFeatureData, MilestoneID, MilestoneName, FeatureID, FeatureName, BusinessArea, MilestoneType, MilestoneDate,
+        FeatureState, FeatureStatus, MilestoneStatus, Notes
+      )
+    plotFeatureData
+  }
 
-## Write the resulting data to an excel file. 
-#  This will be used for visualization in Tableau.
-write.xlsx(storyPlotData, file = "./data/stories_and_features.xlsx", row.names = FALSE, showNA = FALSE)
+mergeInitiativesAndMilestones <-
+  function(denormInitiativeData, ammendedMilestoneData) {
+    ## Merge the initiative and milestone data frames. We need to get all initiatives independent of whether or not they have milestones.
+    #  Merge by milestone ID
+    mergedInitiativeData <-
+      merge(
+        denormInitiativeData, ammendedMilestoneData, by.x = "MilestoneID", by.y = "MilestoneID", all.x = TRUE
+      )
+    # Drop rows with dummy milestones
+    mergedInitiativeData <-
+      filter(mergedInitiativeData, MilestoneID != "MI0")
+    plotInitiativeData <-
+      select(
+        mergedInitiativeData, MilestoneID, MilestoneName, InitiativeID, BusinessArea,
+        MilestoneType, MilestoneDate, MilestoneStatus, Notes
+      )
+    
+    # Fill in dates with no entry so that the Tableau Calendar includes all dates.
+    fillerDates <-
+      seq(as.Date("2015/12/1"), as.Date("2016/4/30"), by = "day")
+    milestoneDates <- unique(plotInitiativeData$MilestoneDate)
+    #get all dates that do not have any milestones
+    missingDates <-
+      as.Date(setdiff(fillerDates, milestoneDates), origin = "1970-1-1")
+    fillRecords <-
+      data.frame(
+        MilestoneID = "", MilestoneName = "", InitiativeID = "", BusinessArea = "",
+        MilestoneType = "",  MilestoneDate = missingDates, MilestoneStatus = "", Notes = ""
+      )
+    plotInitiativeData <- rbind(plotInitiativeData, fillRecords)
+    plotInitiativeData
+  }
 
+mergeFeaturesAndUserstories <-
+  function(userStoryData, featureData) {
+    ## Prep features for merging with user stories.
+    #  Add a dummy feature with an ID of MISSING and a name of Undefined
+    dummyFeatureRow <- data.frame(
+      FeatureID = "MISSING",
+      FeatureName = "Feature Not Assigned",
+      Release = "",
+      Percent.Done.By.Story.Plan.Estimate = 0,
+      Percent.Done.By.Story.Count = 0,
+      Project = "1",
+      Milestones = "Undefined Milestone",
+      BusinessArea = "Undefined Business Area",
+      FeatureState = "TBD",
+      FeatureStatus = "TBD"
+    )
+    ammendedFeatureData <- rbind(featureData, dummyFeatureRow)
+    
+    ## Merge the feature and user story data frames. We need to get all user stories independent on whether or not they have features
+    #  Also want to get features that do not have user stories
+    #  Merge by feature ID
+    mergedStoryData <-
+      merge(
+        userStoryData, ammendedFeatureData, by.x = "FeatureID", by.y = "FeatureID", all.x = TRUE, all.y = TRUE
+      )
+    storyPlotData <-
+      select(
+        mergedStoryData, BusinessArea, FeatureID, FeatureName,
+        UserStoryID, UserStoryName, Iteration, Team, FeatureState, FeatureStatus
+      )
+    
+    # After the merge any features that have not been assigned stories will have null values in the respective fields.
+    # Amend that by explicitly stating that there are no stories assigned and no iterations
+    # Need to account for 1) no story, 2) no iteration, and 3) no team
+    storyPlotData <-
+      mutate(
+        storyPlotData, UserStoryID = ifelse(is.na(UserStoryID), "MISSING", as.character(UserStoryID)),
+        UserStoryName = ifelse(
+          is.na(UserStoryName), "No User Story", as.character(UserStoryName)
+        ),
+        Iteration = ifelse(is.na(Iteration), "No Iteration", as.character(Iteration)),
+        Team = ifelse(is.na(Team), "No Team", as.character(Team))
+      )
+    storyPlotData
+  }
+
+
+saveData <- function(mergedFeaturesAndMilestones,
+                     mergedInitiativesAndMilestones,
+                     mergedFeaturesAndUserstories) {
+  ## Write the resulting data to an excel file.
+  #  This will be used for visualization in Tableau.
+  write.xlsx(
+    mergedFeaturesAndMilestones, file = "./data/features_and_milestones.xlsx", row.names = FALSE, showNA = FALSE
+  )
+  
+  ## Write the resulting data to an excel file.
+  #  This will be used for visualization in Tableau.
+  write.xlsx(
+    mergedInitiativesAndMilestones, file = "./data/initiatives_and_milestones.xlsx", row.names = FALSE, showNA = FALSE
+  )
+  
+  ## Write the resulting data to an excel file.
+  #  This will be used for visualization in Tableau.
+  write.xlsx(
+    mergedFeaturesAndUserstories, file = "./data/stories_and_features.xlsx", row.names = FALSE, showNA = FALSE
+  )
+  
+}
+
+
+processProjects()
