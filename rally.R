@@ -88,7 +88,7 @@ retrieveProjectData <- function(projectFiles) {
     download.file(
       projectFiles$featuresURL[i],
       destfile = featuresFile ,
-      method = "curl", quiet = TRUE
+      method = "curl", quiet = TRUE, extra = "-L"
     )
     featureData <- rbind(featureData, processFeatures(featuresFile))
     
@@ -97,7 +97,7 @@ retrieveProjectData <- function(projectFiles) {
     download.file(
       projectFiles$initiativesURL[i],
       destfile = initiativesFile,
-      method = "curl", quiet = TRUE
+      method = "curl", quiet = TRUE, extra = "-L"
     )
     initiativeData <-
       rbind(initiativeData, processInitiatives(initiativesFile))
@@ -107,7 +107,7 @@ retrieveProjectData <- function(projectFiles) {
     download.file(
       projectFiles$milestonesURL[i],
       destfile = milestonesFile,
-      method = "curl", quiet = TRUE
+      method = "curl", quiet = TRUE, extra = "-L"
     )
     milestoneData <-
       rbind(milestoneData, processMilestones(milestonesFile))
@@ -117,7 +117,7 @@ retrieveProjectData <- function(projectFiles) {
     download.file(
       projectFiles$userstoriesURL[i],
       destfile = userstoriesFile,
-      method = "curl", quiet = TRUE
+      method = "curl", quiet = TRUE, extra = "-L"
     )
     userstoryData <-
       rbind(userstoryData, processUserstories(userstoriesFile))
