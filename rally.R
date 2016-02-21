@@ -31,6 +31,10 @@
 #  Make sure to run Sys.setenv(http_proxy= "http://proxy.inbcu.com/:8080")
 #  Must be run FIRST - at start of session. Otherwise it does not take.
 
+## IMPORTANT!!! Invoke script with the following command:
+# system(paste("RScript rally.R","username", "password"))
+# where username and password represent the login info for Rally
+
 ## Handle library pre-requisites
 # Using dplyr for its more intuitive data frame processing
 if (!require(dplyr))
@@ -60,13 +64,26 @@ getProjectFileData <- function() {
     stringsAsFactors = FALSE
   )
   
+#  projectFiles <- rbind(
+#    projectFiles,
+#    c(
+ #     "TVEArt",
+ #     "https://www.dropbox.com/s/3ory9hvttohv41m/features.csv?dl=0",
+ #     "https://www.dropbox.com/s/ww33molajukswsq/initiatives.csv?dl=0",
+ #     "https://www.dropbox.com/s/qc2bzj9gh96xsvu/milestones.csv?dl=0",
+  #    "https://www.dropbox.com/s/r46ep9s19po317b/userstories.csv?dl=0"
+ #   )
+ # )
+  
   projectFiles <- rbind(
     projectFiles,
     c(
       "TVEArt",
-      "https://www.dropbox.com/s/3ory9hvttohv41m/features.csv?dl=0",
-      "https://www.dropbox.com/s/ww33molajukswsq/initiatives.csv?dl=0",
-      "https://www.dropbox.com/s/qc2bzj9gh96xsvu/milestones.csv?dl=0",
+      "https://rally1.rallydev.com/slm/webservice/v2.x/artifact.csv?workspace=%2Fworkspace%2F14663827143&project=%2Fproject%2F42007008861&projectScopeDown=true&projectScopeUp=true&fetch=FormattedID%2CName%2CRelease%2CPercentDoneByStoryPlanEstimate%2CPercentDoneByStoryCount%2CProject%2CMilestones%2CParent%2CState%2CTags&order=Parent%20ASC&types=portfolioitem%2Ffeature&query=(Release%20%3D%20%22%2Frelease%2F42008546124%22)",
+      "https://rally1.rallydev.com/slm/webservice/v2.x/artifact.csv?workspace=%2Fworkspace%2F14663827143&project=%2Fproject%2F42007008861&projectScopeDown=true&projectScopeUp=true&fetch=FormattedID%2CName%2CRelease%2CPercentDoneByStoryPlanEstimate%2CPercentDoneByStoryCount%2CProject%2CMilestones%2CParent%2CState%2CTags&order=Parent%20ASC&types=portfolioitem%2Finitiative&query=(Project%20%3D%20%22%2Fproject%2F42007008861%22)",
+      "https://rally1.rallydev.com/slm/webservice/v2.x/milestone.csv?workspace=%2Fworkspace%2F14663827143&project=%2Fproject%2F42007008861&projectScopeDown=true&projectScopeUp=true&fetch=FormattedID%2CFormattedID%2CDisplayColor%2CName%2CTargetDate%2CTotalArtifactCount%2CTargetProject%2CNotes&order=TargetDate%20ASC&query=(((Projects%20contains%20%22%2Fproject%2F42007008861%22)%20OR%20(TargetProject%20%3D%20null))%20AND%20(TargetDate%20%3E%3D%20%222015-12-16T00%3A00%3A00-05%3A00%22))",
+      # NOTE the below does not work. Need to follow up with Rally - isn't there an API for user stories?
+      #  "https://rally1.rallydev.com/slm/ar/exportCsv.sp?cpoid=42007008861&projectScopeUp=true&projectScopeDown=true"
       "https://www.dropbox.com/s/r46ep9s19po317b/userstories.csv?dl=0"
     )
   )
@@ -81,6 +98,13 @@ retrieveProjectData <- function(projectFiles) {
   milestoneData <- data.frame()
   userstoryData <- data.frame()
   
+  # get Rally username and password from command line arguments. 
+  # These are needed to retrieve data directly from Rally.
+  args <- commandArgs(trailingOnly = TRUE)
+  username <- as.character(args[1])
+  password <- as.character(args[2])
+  curlOptions <- paste("-L -u", paste(username, password, sep = ":"))
+
   for (i in 1:nrow(projectFiles))
   {
     featuresFile <-
@@ -88,7 +112,7 @@ retrieveProjectData <- function(projectFiles) {
     download.file(
       projectFiles$featuresURL[i],
       destfile = featuresFile ,
-      method = "curl", quiet = TRUE, extra = "-L"
+      method = "curl", quiet = TRUE, extra = curlOptions
     )
     featureData <- rbind(featureData, processFeatures(featuresFile))
     
@@ -97,7 +121,7 @@ retrieveProjectData <- function(projectFiles) {
     download.file(
       projectFiles$initiativesURL[i],
       destfile = initiativesFile,
-      method = "curl", quiet = TRUE, extra = "-L"
+      method = "curl", quiet = TRUE, extra = curlOptions
     )
     initiativeData <-
       rbind(initiativeData, processInitiatives(initiativesFile))
@@ -107,7 +131,7 @@ retrieveProjectData <- function(projectFiles) {
     download.file(
       projectFiles$milestonesURL[i],
       destfile = milestonesFile,
-      method = "curl", quiet = TRUE, extra = "-L"
+      method = "curl", quiet = TRUE, extra = curlOptions
     )
     milestoneData <-
       rbind(milestoneData, processMilestones(milestonesFile))
@@ -117,7 +141,7 @@ retrieveProjectData <- function(projectFiles) {
     download.file(
       projectFiles$userstoriesURL[i],
       destfile = userstoriesFile,
-      method = "curl", quiet = TRUE, extra = "-L"
+      method = "curl", quiet = TRUE, extra = curlOptions
     )
     userstoryData <-
       rbind(userstoryData, processUserstories(userstoriesFile))
