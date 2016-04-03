@@ -32,7 +32,7 @@
 #  Must be run FIRST - at start of session. Otherwise it does not take.
 
 ## IMPORTANT!!! Invoke script with the following command:
-# system(paste("RScript rally.R","username", "password"))
+# system(paste("RScript rallyConcerto.R","username", "password"))
 # where username and password represent the login info for Rally
 # Note that when running from work - go to wireless NBCU_BYOD. Otherwise I get curl errors
 
@@ -56,30 +56,9 @@ library(xlsx)
 
 #it would be better to have this stored in a csv file and retrieved in "one go"
 getProjectFileData <- function() {
-
-##################### DROPBOX LOCATIONS #####################  
-  #  projectFiles <- data.frame(
-#    RallyProject = "MVPDAdmin",
-#    featuresURL = "https://www.dropbox.com/s/77kd42o8xpojc0u/featuresAdmin.csv?dl=0",
- #   initiativesURL = "https://www.dropbox.com/s/e8rujax8a6joduy/initiativesAdmin.csv?dl=0",
-#    milestonesURL = "https://www.dropbox.com/s/7fhefjrw7a5zrlc/milestonesAdmin.csv?dl=0",
- #   userstoriesURL = "https://www.dropbox.com/s/ygdtapx69k0hawn/userstoriesAdmin.csv?dl=0",
- #   stringsAsFactors = FALSE
-#  )
-  
-#  projectFiles <- rbind(
-#    projectFiles,
-#    c(
- #     "TVEArt",
- #     "https://www.dropbox.com/s/3ory9hvttohv41m/features.csv?dl=0",
- #     "https://www.dropbox.com/s/ww33molajukswsq/initiatives.csv?dl=0",
- #     "https://www.dropbox.com/s/qc2bzj9gh96xsvu/milestones.csv?dl=0",
-  #    "https://www.dropbox.com/s/r46ep9s19po317b/userstories.csv?dl=0"
- #   )
- # )
   
   projectFiles <- data.frame(
-    RallyProject = "MVPDAdmin",
+    RallyProject = "MVPDAdminC",
     featuresURL = "https://rally1.rallydev.com/slm/webservice/v2.x/artifact.csv?workspace=%2Fworkspace%2F14663827143&project=%2Fproject%2F38172781027&projectScopeDown=true&projectScopeUp=false&fetch=FormattedID%2CName%2CRelease%2CPercentDoneByStoryPlanEstimate%2CPercentDoneByStoryCount%2CProject%2CMilestones%2CParent%2CState%2CTags&order=DragAndDropRank%20ASC&types=portfolioitem%2Ffeature&query",
     initiativesURL = "https://rally1.rallydev.com/slm/webservice/v2.x/artifact.csv?workspace=%2Fworkspace%2F14663827143&project=%2Fproject%2F38172781027&projectScopeDown=true&projectScopeUp=false&fetch=FormattedID%2CName%2CRelease%2CPercentDoneByStoryPlanEstimate%2CPercentDoneByStoryCount%2CProject%2CMilestones%2CParent%2CState%2CTags&order=DragAndDropRank%20ASC&types=portfolioitem%2Finitiative&query=",
     milestonesURL = "https://rally1.rallydev.com/slm/webservice/v2.x/milestone.csv?workspace=%2Fworkspace%2F14663827143&project=%2Fproject%2F38172781027&projectScopeDown=true&projectScopeUp=false&fetch=FormattedID%2CFormattedID%2CDisplayColor%2CName%2CTargetDate%2CTotalArtifactCount%2CTargetProject%2CNotes&order=TargetDate%20DESC&query=((Projects%20contains%20%22%2Fproject%2F38172781027%22)%20OR%20(TargetProject%20%3D%20null))",
@@ -89,16 +68,36 @@ getProjectFileData <- function() {
     stringsAsFactors = FALSE
   )
   
-  projectFiles <- rbind(
-    projectFiles,
-    c(
-      "TVEArt",
-      "https://rally1.rallydev.com/slm/webservice/v2.x/artifact.csv?workspace=%2Fworkspace%2F14663827143&project=%2Fproject%2F42007008861&projectScopeDown=true&projectScopeUp=true&fetch=FormattedID%2CName%2CRelease%2CPercentDoneByStoryPlanEstimate%2CPercentDoneByStoryCount%2CProject%2CMilestones%2CParent%2CState%2CTags&order=Parent%20ASC&types=portfolioitem%2Ffeature&query=(Release%20%3D%20%22%2Frelease%2F42008546124%22)",
-      "https://rally1.rallydev.com/slm/webservice/v2.x/artifact.csv?workspace=%2Fworkspace%2F14663827143&project=%2Fproject%2F42007008861&projectScopeDown=true&projectScopeUp=true&fetch=FormattedID%2CName%2CRelease%2CPercentDoneByStoryPlanEstimate%2CPercentDoneByStoryCount%2CProject%2CMilestones%2CParent%2CState%2CTags&order=Parent%20ASC&types=portfolioitem%2Finitiative&query=(Project%20%3D%20%22%2Fproject%2F42007008861%22)",
-      "https://rally1.rallydev.com/slm/webservice/v2.x/milestone.csv?workspace=%2Fworkspace%2F14663827143&project=%2Fproject%2F42007008861&projectScopeDown=true&projectScopeUp=true&fetch=FormattedID%2CFormattedID%2CDisplayColor%2CName%2CTargetDate%2CTotalArtifactCount%2CTargetProject%2CNotes&order=TargetDate%20ASC&query=(((Projects%20contains%20%22%2Fproject%2F42007008861%22)%20OR%20(TargetProject%20%3D%20null))%20AND%20(TargetDate%20%3E%3D%20%222015-12-16T00%3A00%3A00-05%3A00%22))",
-      #"https://www.dropbox.com/s/r46ep9s19po317b/userstories.csv?dl=0"
-      "https://rally1.rallydev.com/slm/webservice/v2.x/artifact.csv?workspace=%2Fworkspace%2F14663827143&project=%2Fproject%2F42007008861&projectScopeDown=true&projectScopeUp=true&fetch=FormattedID%2CFormattedID%2CName%2CRelease%2CIteration%2CScheduleState%2CPlanEstimate%2CTaskEstimateTotal%2CTaskRemainingTotal%2CProject%2COwner%2CFeature%2CDirectChildrenCount%2CParent&order=DragAndDropRank%20ASC&types=hierarchicalrequirement&query=(Release%20%3D%20%22%2Frelease%2F42008546124%22)"
-    )
+ # projectFiles <- rbind(
+ #   projectFiles,
+ #   c(
+  #    "TVEArt",
+ #     "https://rally1.rallydev.com/slm/webservice/v2.x/artifact.csv?workspace=%2Fworkspace%2F14663827143&project=%2Fproject%2F42007008861&projectScopeDown=true&projectScopeUp=true&fetch=FormattedID%2CName%2CRelease%2CPercentDoneByStoryPlanEstimate%2CPercentDoneByStoryCount%2CProject%2CMilestones%2CParent%2CState%2CTags&order=Parent%20ASC&types=portfolioitem%2Ffeature&query=(Release%20%3D%20%22%2Frelease%2F42008546124%22)",
+ #     "https://rally1.rallydev.com/slm/webservice/v2.x/artifact.csv?workspace=%2Fworkspace%2F14663827143&project=%2Fproject%2F42007008861&projectScopeDown=true&projectScopeUp=true&fetch=FormattedID%2CName%2CRelease%2CPercentDoneByStoryPlanEstimate%2CPercentDoneByStoryCount%2CProject%2CMilestones%2CParent%2CState%2CTags&order=Parent%20ASC&types=portfolioitem%2Finitiative&query=(Project%20%3D%20%22%2Fproject%2F42007008861%22)",
+ #     "https://rally1.rallydev.com/slm/webservice/v2.x/milestone.csv?workspace=%2Fworkspace%2F14663827143&project=%2Fproject%2F42007008861&projectScopeDown=true&projectScopeUp=true&fetch=FormattedID%2CFormattedID%2CDisplayColor%2CName%2CTargetDate%2CTotalArtifactCount%2CTargetProject%2CNotes&order=TargetDate%20ASC&query=(((Projects%20contains%20%22%2Fproject%2F42007008861%22)%20OR%20(TargetProject%20%3D%20null))%20AND%20(TargetDate%20%3E%3D%20%222015-12-16T00%3A00%3A00-05%3A00%22))",
+ #     #"https://www.dropbox.com/s/r46ep9s19po317b/userstories.csv?dl=0"
+ #     "https://rally1.rallydev.com/slm/webservice/v2.x/artifact.csv?workspace=%2Fworkspace%2F14663827143&project=%2Fproject%2F42007008861&projectScopeDown=true&projectScopeUp=true&fetch=FormattedID%2CFormattedID%2CName%2CRelease%2CIteration%2CScheduleState%2CPlanEstimate%2CTaskEstimateTotal%2CTaskRemainingTotal%2CProject%2COwner%2CFeature%2CDirectChildrenCount%2CParent&order=DragAndDropRank%20ASC&types=hierarchicalrequirement&query=(Release%20%3D%20%22%2Frelease%2F42008546124%22)"
+ #   )
+#  )
+  
+    projectFiles <- rbind(
+      projectFiles,
+      c(
+        "ConcertoArt",
+        # FEATURES
+        "https://rally1.rallydev.com/slm/webservice/v2.x/artifact.csv?workspace=%2Fworkspace%2F14663827143&project=%2Fproject%2F53007765047&projectScopeDown=true&projectScopeUp=true&fetch=FormattedID%2CName%2CRelease%2CPercentDoneByStoryPlanEstimate%2CPercentDoneByStoryCount%2CProject%2CMilestones%2CParent%2CState%2CTags&order=Parent%20ASC&types=portfolioitem%2Ffeature&query=(Release%20%3D%20%22%2Frelease%2F0ec32483-1181-4663-bdad-af33280086ea%22)",
+       # "https://rally1.rallydev.com/slm/webservice/v2.x/artifact.csv?workspace=%2Fworkspace%2F14663827143&project=%2Fproject%2F42007008861&projectScopeDown=true&projectScopeUp=true&fetch=FormattedID%2CName%2CRelease%2CPercentDoneByStoryPlanEstimate%2CPercentDoneByStoryCount%2CProject%2CMilestones%2CParent%2CState%2CTags&order=Parent%20ASC&types=portfolioitem%2Ffeature&query=(Release%20%3D%20%22%2Frelease%2F42008546124%22)",
+        # INITIATIVES
+         #  "https://rally1.rallydev.com/slm/webservice/v2.x/artifact.csv?workspace=%2Fworkspace%2F14663827143&project=%2Fproject%2F42007008861&projectScopeDown=true&projectScopeUp=true&fetch=FormattedID%2CName%2CRelease%2CPercentDoneByStoryPlanEstimate%2CPercentDoneByStoryCount%2CProject%2CMilestones%2CParent%2CState%2CTags&order=Parent%20ASC&types=portfolioitem%2Finitiative&query=(Project%20%3D%20%22%2Fproject%2F42007008861%22)",
+        "https://rally1.rallydev.com/slm/webservice/v2.x/artifact.csv?workspace=%2Fworkspace%2F14663827143&project=%2Fproject%2F53007765047&projectScopeDown=true&projectScopeUp=true&fetch=FormattedID%2CName%2CRelease%2CPercentDoneByStoryPlanEstimate%2CPercentDoneByStoryCount%2CProject%2CMilestones%2CParent%2CState%2CTags&order=Parent%20ASC&types=portfolioitem%2Finitiative&query=",
+        
+       # MILESTONES
+       "https://rally1.rallydev.com/slm/webservice/v2.x/milestone.csv?workspace=%2Fworkspace%2F14663827143&project=%2Fproject%2F53007765047&projectScopeDown=true&projectScopeUp=true&fetch=FormattedID%2CFormattedID%2CDisplayColor%2CName%2CTargetDate%2CTotalArtifactCount%2CTargetProject%2CNotes&order=TargetDate%20ASC&query=((Projects%20contains%20%22%2Fproject%2F53007765047%22)%20OR%20(TargetProject%20%3D%20null))",
+       #"https://rally1.rallydev.com/slm/webservice/v2.x/milestone.csv?workspace=%2Fworkspace%2F14663827143&project=%2Fproject%2F42007008861&projectScopeDown=true&projectScopeUp=true&fetch=FormattedID%2CFormattedID%2CDisplayColor%2CName%2CTargetDate%2CTotalArtifactCount%2CTargetProject%2CNotes&order=TargetDate%20ASC&query=(((Projects%20contains%20%22%2Fproject%2F42007008861%22)%20OR%20(TargetProject%20%3D%20null))%20AND%20(TargetDate%20%3E%3D%20%222015-12-16T00%3A00%3A00-05%3A00%22))",
+       # USER STORIES
+       "https://rally1.rallydev.com/slm/webservice/v2.x/artifact.csv?workspace=%2Fworkspace%2F14663827143&project=%2Fproject%2F53007765047&projectScopeDown=true&projectScopeUp=true&fetch=FormattedID%2CFormattedID%2CName%2CRelease%2CIteration%2CScheduleState%2CPlanEstimate%2CTaskEstimateTotal%2CTaskRemainingTotal%2CProject%2COwner%2CFeature%2CDirectChildrenCount%2CParent&order=DragAndDropRank%20ASC&types=hierarchicalrequirement&query=((Release%20%3D%20%22%2Frelease%2F1638ca78-bc81-4c2a-b135-fb5e4c492062%22)%20OR%20(Release%20%3D%20%22%2Frelease%2F0ec32483-1181-4663-bdad-af33280086ea%22))"
+       # "https://rally1.rallydev.com/slm/webservice/v2.x/artifact.csv?workspace=%2Fworkspace%2F14663827143&project=%2Fproject%2F42007008861&projectScopeDown=true&projectScopeUp=true&fetch=FormattedID%2CFormattedID%2CName%2CRelease%2CIteration%2CScheduleState%2CPlanEstimate%2CTaskEstimateTotal%2CTaskRemainingTotal%2CProject%2COwner%2CFeature%2CDirectChildrenCount%2CParent&order=DragAndDropRank%20ASC&types=hierarchicalrequirement&query=(Release%20%3D%20%22%2Frelease%2F42008546124%22)"
+      )
   )
   projectFiles
 }
@@ -117,7 +116,7 @@ retrieveProjectData <- function(projectFiles) {
   username <- as.character(args[1])
   password <- as.character(args[2])
   curlOptions <- paste("-L -u", paste(username, password, sep = ":"))
-
+  
   for (i in 1:nrow(projectFiles))
   {
     featuresFile <-
@@ -461,19 +460,19 @@ saveData <- function(mergedFeaturesAndMilestones,
   ## Write the resulting data to an excel file.
   #  This will be used for visualization in Tableau.
   write.xlsx(
-    mergedFeaturesAndMilestones, file = "./data/features_and_milestones.xlsx", row.names = FALSE, showNA = FALSE
+    mergedFeaturesAndMilestones, file = "./data/features_and_milestonesC.xlsx", row.names = FALSE, showNA = FALSE
   )
   
   ## Write the resulting data to an excel file.
   #  This will be used for visualization in Tableau.
   write.xlsx(
-    mergedInitiativesAndMilestones, file = "./data/initiatives_and_milestones.xlsx", row.names = FALSE, showNA = FALSE
+    mergedInitiativesAndMilestones, file = "./data/initiatives_and_milestonesC.xlsx", row.names = FALSE, showNA = FALSE
   )
   
   ## Write the resulting data to an excel file.
   #  This will be used for visualization in Tableau.
   write.xlsx(
-    mergedFeaturesAndUserstories, file = "./data/stories_and_features.xlsx", row.names = FALSE, showNA = FALSE
+    mergedFeaturesAndUserstories, file = "./data/stories_and_featuresC.xlsx", row.names = FALSE, showNA = FALSE
   )
   
 }
